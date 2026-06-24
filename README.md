@@ -6,15 +6,19 @@ Tusic strips away the bloat of modern electron apps, giving you a clean, keyboar
 
 ![Project Screenshot](./ss/demo.png)
 
+> **Disclaimer:** Tusic is a personal educational project built to explore concurrent systems programming, terminal state management, and API bridging in Go. It is not intended for commercial use. Please respect the Terms of Service of your media providers. Do not upload active `cookies.txt` files to public repositories.
+
 ## Features
 
 * **Vim-Native Navigation:** Keep your hands on the home row. Navigate panes, scroll lists, and search entirely via standard Vim keybindings (`h`, `j`, `k`, `l`, `/`).
 * **Smart "Made For You":** Analyzes your local listening history, calculates your top artists, and automatically curates a YouTube Music radio mix on startup.
 * **Local Database:** Fully private, local SQLite database stores your listening history and custom saved playlists.
-* **Gapless MPV Playback:** Audio is handled asynchronously via a hidden `libmpv` background process for zero-latency playback.
-* **Bypass Protections:** Uses `yt-dlp` under the hood to reliably extract and resolve high-quality audio streams directly from YouTube's servers.
+* **Gapless MPV Playback:** Audio is handled asynchronously via a background `mpv` IPC socket for zero-latency playback.
 
 ## Requirements
+
+* **Go 1.21+** (To build the binary)
+* **mpv** (Required: Core audio engine)
 
 ### System Dependencies
 You need the `mpv` media player and 'yt-dlp' installed on your system for the audio engine to work.
@@ -24,7 +28,7 @@ You need the `mpv` media player and 'yt-dlp' installed on your system for the au
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/impossibleclone/tusic-go.git
-   cd tusic
+   cd tusic-go
    ```
 
 2. **Build the program:**
@@ -35,7 +39,10 @@ You need the `mpv` media player and 'yt-dlp' installed on your system for the au
 
 4. **Run the program:**
    ```bash
+   // If built from source
    ./tusic
+   // or 
+   make run
    ```
 
 ## Keybindings

@@ -1,54 +1,15 @@
 package ytapi
 
 import (
-	"bufio"
 	"bytes"
-	"fmt"
-	"os"
-	"os/exec"
-	"strings"
-	"net/http"
-	"github.com/tidwall/gjson"
-	"io"
 	"encoding/json"
+	"io"
+	"net/http"
 
 	"github.com/impossibleclone/tusic-go/internal/models"
+	"github.com/kkdai/youtube/v2"
+	"github.com/tidwall/gjson"
 )
-
-func fetchFast(baseArgs []string) []models.Song {
-	args := append([]string{"--print", "%(id)s|||%(title)s|||%(channel)s|||%(duration_string)s", "--flat-playlist", "--no-warnings", "--quiet"}, baseArgs...)
-
-	if _, err := os.Stat("cookies.txt"); err == nil {
-		args = append([]string{"--cookies", "cookies.txt"}, args...)
-	}
-
-	cmd := exec.Command("yt-dlp", args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Run()
-
-	var songs []models.Song
-	scanner := bufio.NewScanner(&out)
-	for scanner.Scan() {
-		parts := strings.Split(scanner.Text(), "|||")
-		if len(parts) >= 4 {
-			dur := parts[3]
-			if dur == "NA" { dur = "Unknown" }
-			songs = append(songs, models.Song{
-				ID:       parts[0],
-				Title:    parts[1],
-				Artist:   parts[2],
-				Duration: dur,
-			})
-		}
-	}
-	return songs
-}
-
-func Search(query string) []models.Song {
-	// ytsearch20 limits it to 20 results for instant loading
-	return fetchFast([]string{fmt.Sprintf("ytsearch20:%s", query)})
-}
 
 func doInnerTube(endpoint string, payload map[string]any) gjson.Result {
 	url := "https://music.youtube.com/youtubei/v1/" + endpoint
@@ -75,6 +36,72 @@ func doInnerTube(endpoint string, payload map[string]any) gjson.Result {
 	return gjson.ParseBytes(respBody)
 }
 
+func Search(query string) []models.Song {
+	// The "params" string is the exact code YTMusic uses to filter by "Songs"
+	res := doInnerTube("search", map[string]any{
+		"query":  query,
+		"params": "EgWKAQIIAWoMEA4QChADEAQQCRAF",
+	})
+
+	var songs []models.Song
+
+	sections := res.Get("contents.tabbedSearchResultsRenderer.tabs.0.tabRenderer.content.sectionListRenderer.contents")
+	sections.ForEach(func(key, section gjson.Result) bool {
+		items := section.Get("musicShelfRenderer.contents")
+		items.ForEach(func(k, v gjson.Result) bool {
+			renderer := v.Get("musicResponsiveListItemRenderer")
+			if !renderer.Exists() {
+				return true
+			}
+
+			// Try the play button overlay (Standard location)
+			id := renderer.Get("overlay.musicItemThumbnailOverlayRenderer.content.musicPlayButtonRenderer.playNavigationEndpoint.watchEndpoint.videoId").String()
+
+			// Try the menu items (Fallback location)
+			if id == "" {
+				id = renderer.Get("menu.menuRenderer.items.0.menuNavigationItemRenderer.navigationEndpoint.watchEndpoint.videoId").String()
+			}
+
+			// Try the title's hyperlink (Fallback location)
+			if id == "" {
+				id = renderer.Get("flexColumns.0.musicResponsiveListItemFlexColumnRenderer.text.runs.0.navigationEndpoint.watchEndpoint.videoId").String()
+			}
+
+			if id == "" {
+				return true
+			}
+
+			title := renderer.Get("flexColumns.0.musicResponsiveListItemFlexColumnRenderer.text.runs.0.text").String()
+
+			runs := renderer.Get("flexColumns.1.musicResponsiveListItemFlexColumnRenderer.text.runs").Array()
+			artist := "Unknown"
+			duration := "Unknown"
+
+			if len(runs) > 0 {
+				artist = runs[0].Get("text").String()
+			}
+
+			// YouTube formats the subtitle runs as: Artist • Album • Duration
+			if len(runs) > 4 {
+				duration = runs[len(runs)-1].Get("text").String()
+			} else if len(runs) == 3 {
+				duration = runs[2].Get("text").String()
+			}
+
+			songs = append(songs, models.Song{
+				ID:       id,
+				Title:    title,
+				Artist:   artist,
+				Duration: duration,
+			})
+			return true
+		})
+		return true
+	})
+
+	return songs
+}
+
 func GetRadio(videoID string) []models.Song {
 	res := doInnerTube("next", map[string]any{"playlistId": "RDAMVM" + videoID})
 	var songs []models.Song
@@ -89,44 +116,40 @@ func GetRadio(videoID string) []models.Song {
 
 		id := renderer.Get("videoId").String()
 		if id == "" || id == videoID {
-			return true // Skip missing items or the seed song itself
+			return true
 		}
 
 		title := renderer.Get("title.runs.0.text").String()
 		artist := renderer.Get("longBylineText.runs.0.text").String()
 		duration := renderer.Get("lengthText.runs.0.text").String()
 
-		songs = append(songs, models.Song{
-			ID:       id,
-			Title:    title,
-			Artist:   artist,
-			Duration: duration,
-		})
+		songs = append(songs, models.Song{ID: id, Title: title, Artist: artist, Duration: duration})
 		return true
 	})
-
 	return songs
 }
 
 func GetStreamURL(videoID string) string {
-	url := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID) + "&sp=EgIQAQ%253D%253D"
-	args := []string{"-g", "-f", "bestaudio/best", "--no-warnings", "--quiet"}
+	client := youtube.Client{}
 
-	if _, err := os.Stat("cookies.txt"); err == nil {
-		args = append([]string{"--cookies", "cookies.txt"}, args...)
+	// Fetch video metadata natively
+	video, err := client.GetVideo(videoID)
+	if err != nil {
+		return ""
 	}
-	args = append(args, url)
 
-	cmd := exec.Command("yt-dlp", args...)
-	out, err := cmd.Output()
-	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		if len(lines) > 0 {
-			cleanUrl := strings.TrimSpace(lines[len(lines)-1])
-			if strings.HasPrefix(cleanUrl, "http") {
-				return cleanUrl
-			}
+	// Filter for formats that actually contain audio
+	formats := video.Formats.WithAudioChannels()
+	formats.Sort() // Sorts to best quality automatically
+
+	// Extract the direct Google video URL
+	if len(formats) > 0 {
+		url, err := client.GetStreamURL(video, &formats[0])
+		if err == nil && url != "" {
+			return url
 		}
 	}
+
+	// If all native extraction fails, return empty to trigger a skip
 	return ""
 }
