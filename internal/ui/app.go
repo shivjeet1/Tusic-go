@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/impossibleclone/tusic-go/internal/colors"
 	"github.com/impossibleclone/tusic-go/internal/db"
 	"github.com/impossibleclone/tusic-go/internal/models"
 	"github.com/impossibleclone/tusic-go/internal/player"
@@ -38,13 +39,13 @@ type streamResolvedMsg string
 type radioFetchedMsg []models.Song
 
 var (
-	borderColor       = lipgloss.Color("#4a4a4a")
-	activeBorder      = lipgloss.Color("#B5EAD7")
+	borderColor       = lipgloss.Color(colors.GetPywalColors().Colors["color8"])
+	activeBorder      = lipgloss.Color(colors.GetPywalColors().Colors["color4"])
 	baseBorderStyle   = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(borderColor)
 	activeBorderStyle = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(activeBorder)
 	sidebarItemStyle  = lipgloss.NewStyle().PaddingLeft(1)
 	activeItemStyle   = lipgloss.NewStyle().PaddingLeft(1).Background(lipgloss.Color("#2d4b5a")).Foreground(lipgloss.Color("#B5EAD7"))
-	helpDialogStyle   = lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(activeBorder).Background(lipgloss.Color("#000000")).Padding(1, 4)
+	helpDialogStyle   = lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(activeBorder).Background(lipgloss.Color(colors.GetPywalColors().Special.Background)).Padding(1, 4)
 )
 
 type AppModel struct {
@@ -424,7 +425,7 @@ func (m AppModel) View() string {
 	if m.width == 0 {
 		return "Initializing..."
 	}
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("241")).MarginBottom(1)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colors.GetPywalColors().Special.Foreground)).MarginBottom(1)
 
 	searchBorder := baseBorderStyle
 	if m.focus == FocusSearch {
